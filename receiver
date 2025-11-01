@@ -1,0 +1,76 @@
+#include <SPI.h>
+#include <LoRa.h>  
+
+#define LORA_SCK     14 
+#define LORA_MISO    12  
+#define LORA_MOSI    13  
+#define LORA_CS      15  
+#define LORA_RST     16  
+#define LORA_DIO0    5   
+float latitude = 0.0;
+float longitude = 0.0;
+float altitude = 0.0;
+float speed = 0.0;
+int satellites = 0;
+String timestamp = "";
+void setup() {
+  
+  Serial.begin(115200);
+  while (!Serial);
+  Serial.println("LoRa GPS Receiver Started");
+  LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
+  
+  if (!LoRa.begin(433E6)) { 
+    Serial.println("LoRa initialization failed. Check your connections.");
+    while (true);
+  }
+  LoRa.setSpreadingFactor(7);      
+  LoRa.setSignalBandwidth(125E3);  
+  LoRa.setCodingRate4(5);          
+  LoRa.setPreambleLength(8);       
+  Serial.println("LoRa initialized successfully!");
+  Serial.println("Waiting for GPS data...");
+}
+void loop() {
+  
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    Serial.print("Received packet '");
+    String packet = "";
+    while (LoRa.available()) {
+      packet += (char)LoRa.read();
+    }
+    Serial.print("' with RSSI ");
+    Serial.println(LoRa.packetRssi());
+    parseGPSData(packet);
+    displayGPSData();
+  }
+}
+void parseGPSData(String data) {
+  
+  int firstComma = data.indexOf(',');
+  int secondComma = data.indexOf(',', firstComma + 1);
+  int thirdComma = data.indexOf(',', secondComma + 1);
+  int fourthComma = data.indexOf(',', thirdComma + 1);
+  int fifthComma = data.indexOf(',', fourthComma + 1);
+  
+  if (firstComma != -1 && secondComma != -1 && thirdComma != -1 && 
+      fourthComma != -1 && fifthComma != -1) {
+    latitude = data.substring(0, firstComma).toFloat();
+    longitude = data.substring(firstComma + 1, secondComma).toFloat();
+    altitude = data.substring(secondComma + 1, thirdComma).toFloat();
+    speed = data.substring(thirdComma + 1, fourthComma).toFloat();
+    satellites = data.substring(fourthComma + 1, fifthComma).toInt();
+    timestamp = data.substring(fifthComma + 1);
+  }
+}
+void displayGPSData() {
+  Serial.println("\n=== GPS Data Received ===");
+  Serial.print("Latitude: "); Serial.println(latitude, 6);
+  Serial.print("Longitude: "); Serial.println(longitude, 6);
+  Serial.print("Altitude: "); Serial.print(altitude); Serial.println(" m");
+  Serial.print("Speed: "); Serial.print(speed); Serial.println(" km/h");
+  Serial.print("Satellites: "); Serial.println(satellites);
+  Serial.print("Time: "); Serial.println(timestamp);
+  Serial.println("=========================\n");
+}
