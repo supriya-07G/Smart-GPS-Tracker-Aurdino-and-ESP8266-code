@@ -1,1 +1,130 @@
+#include <SPI.h>
+#include <LoRa.h>
+#include <TinyGPSPlus.h>
+#include <SoftwareSerial.h>
 
+#define LORA_SCK 13
+#define LORA_MISO 12
+#define LORA_MOSI 11
+#define LORA_CS 10
+#define LORA_RST 9
+#define LORA_DIO0 2
+#define GPS_RX 4
+#define GPS_TX 3
+
+SoftwareSerial gpsSerial(GPS_RX, GPS_TX);
+TinyGPSPlus gps;
+
+const unsigned long TRANSMIT_INTERVAL = 5000;
+unsigned long lastTransmitTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  gpsSerial.begin(9600);
+  Serial.println("LoRa GPS Transmitter Started");
+  LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
+  if (!LoRa.begin(433E6)) {
+    Serial.println("LoRa initialization failed. Check your connections.");
+    while (true);
+  }
+  LoRa.setSpreadingFactor(7);
+  LoRa.setSignalBandwidth(125E3);
+  LoRa.setCodingRate4(5);
+  LoRa.setPreambleLength(8);
+  Serial.println("LoRa initialized successfully!");
+  Serial.println("Waiting for GPS signal...");
+}
+
+void loop() {
+  while (gpsSerial.available() > 0) {
+    if (gps.encode(gpsSerial.read())) {
+      displayGPSInfo();
+    }
+  }
+  if (millis() - lastTransmitTime > TRANSMIT_INTERVAL) {
+    String gpsData = prepareGPSData();
+    sendLoRaData(gpsData);
+    lastTransmitTime = millis();
+  }
+  if (millis() > 5000 && gps.charsProcessed() < 10) {
+    Serial.println("No GPS detected. Check wiring.");
+    while (true);
+  }
+}
+
+String prepareGPSData() {
+  String data = "";
+  if (gps.location.isValid()) {
+    data += String(gps.location.lat(), 6);
+    data += ",";
+    data += String(gps.location.lng(), 6);
+    data += ",";
+    data += String(gps.altitude.meters(), 1);
+    data += ",";
+    data += String(gps.speed.kmph(), 1);
+    data += ",";
+    data += String(gps.satellites.value());
+    data += ",";
+    if (gps.time.isValid()) {
+      char timeStr[12];
+      sprintf(timeStr, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+      data += timeStr;
+    } else {
+      data += "00:00:00";
+    }
+  } else {
+    data = "0,0,0,0,0,NO_GPS";
+  }
+  return data;
+}
+
+void sendLoRaData(String data) {
+  Serial.print("Sending: ");
+  Serial.println(data);
+  LoRa.beginPacket();
+  LoRa.print(data);
+  LoRa.endPacket();
+  Serial.println("Packet sent!");
+}
+
+void displayGPSInfo() {
+  Serial.print("Location: ");
+  if (gps.location.isValid()) {
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(", ");
+    Serial.print(gps.location.lng(), 6);
+  } else {
+    Serial.print("INVALID");
+  }
+  Serial.print("  Altitude: ");
+  if (gps.altitude.isValid()) {
+    Serial.print(gps.altitude.meters());
+    Serial.print("m");
+  } else {
+    Serial.print("INVALID");
+  }
+  Serial.print("  Speed: ");
+  if (gps.speed.isValid()) {
+    Serial.print(gps.speed.kmph());
+    Serial.print("km/h");
+  } else {
+    Serial.print("INVALID");
+  }
+  Serial.print("  Satellites: ");
+  if (gps.satellites.isValid()) {
+    Serial.print(gps.satellites.value());
+  } else {
+    Serial.print("INVALID");
+  }
+  Serial.print("  Time: ");
+  if (gps.time.isValid()) {
+    Serial.print(gps.time.hour());
+    Serial.print(":");
+    Serial.print(gps.time.minute());
+    Serial.print(":");
+    Serial.print(gps.time.second());
+  } else {
+    Serial.print("INVALID");
+  }
+  Serial.println();
+}
